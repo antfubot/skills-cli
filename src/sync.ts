@@ -16,6 +16,7 @@ import { addSkillToLocalLock, computeSkillFolderHash, readLocalLock } from './lo
 import type { AgentType } from './types.ts';
 import { track } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
+import { getLastSelectedAgents, saveSelectedAgents } from './skill-lock.ts';
 import {
   type NpmSkill,
   createTargetName,
@@ -356,6 +357,14 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
     const totalAgents = Object.keys(agents).length;
     spinner.stop(`${totalAgents} agents`);
 
+    // Load last selected agents for initial selection
+    let lastSelected: string[] | undefined;
+    try {
+      lastSelected = await getLastSelectedAgents();
+    } catch {
+      // Silently ignore errors
+    }
+
     if (installedAgents.length === 0) {
       if (options.yes) {
         targetAgents = universalAgents;
@@ -369,10 +378,17 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
           hint: agents[a].skillsDir,
         }));
 
+        const initialSelected = lastSelected
+          ? (lastSelected.filter(
+              (a) =>
+                otherAgents.includes(a as AgentType) && !universalAgents.includes(a as AgentType)
+            ) as AgentType[])
+          : [];
+
         const selected = await searchMultiselect({
           message: 'Which agents do you want to install to?',
           items: otherChoices,
-          initialSelected: [],
+          initialSelected,
           lockedSection: {
             title: 'Universal (.agents/skills)',
             items: visibleUniversalAgents.map((a) => ({
@@ -389,6 +405,13 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
         }
 
         targetAgents = selected as AgentType[];
+
+        // Save selection for next time
+        try {
+          await saveSelectedAgents(targetAgents as string[]);
+        } catch {
+          // Silently ignore errors
+        }
       }
     } else if (installedAgents.length === 1 || options.yes) {
       targetAgents = [...installedAgents];
@@ -406,10 +429,17 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
         hint: agents[a].skillsDir,
       }));
 
+      // Use last saved selection if available, otherwise fall back to all installed
+      const initialSelected = lastSelected
+        ? (lastSelected.filter(
+            (a) => otherAgents.includes(a as AgentType) && !universalAgents.includes(a as AgentType)
+          ) as AgentType[])
+        : (installedAgents.filter((a) => !universalAgents.includes(a)) as AgentType[]);
+
       const selected = await searchMultiselect({
         message: 'Which agents do you want to install to?',
         items: otherChoices,
-        initialSelected: installedAgents.filter((a) => !universalAgents.includes(a)),
+        initialSelected,
         lockedSection: {
           title: 'Universal (.agents/skills)',
           items: visibleUniversalAgents.map((a) => ({
@@ -426,6 +456,13 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
       }
 
       targetAgents = selected as AgentType[];
+
+      // Save selection for next time
+      try {
+        await saveSelectedAgents(targetAgents as string[]);
+      } catch {
+        // Silently ignore errors
+      }
     }
   }
 
