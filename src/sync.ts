@@ -25,6 +25,7 @@ import {
   searchForWorkspaceRoot,
   getWorkspacePackageRoots,
   filterNpmSkills,
+  resolveNpmSkillConflicts,
   buildNpmSyncTelemetryPackages,
   createSkillSymlink,
   cleanupStaleNpmSkills,
@@ -69,7 +70,6 @@ async function scanNodeModulesDir(
 ): Promise<NpmSkill[]> {
   const nodeModulesDir = join(cwd, 'node_modules');
   const skills: NpmSkill[] = [];
-  const seenTargetNames = new Set<string>();
 
   const packageDeps = source === 'package.json' ? await getPackageDeps(cwd) : null;
 
@@ -79,13 +79,6 @@ async function scanNodeModulesDir(
   } catch {
     return skills;
   }
-
-  const addSkill = (skill: NpmSkill) => {
-    if (!seenTargetNames.has(skill.targetName)) {
-      seenTargetNames.add(skill.targetName);
-      skills.push(skill);
-    }
-  };
 
   const processPackageDir = async (pkgDir: string, packageName: string) => {
     let packageVersion: string | undefined;
@@ -101,7 +94,7 @@ async function scanNodeModulesDir(
     // 1. Check for SKILL.md at package root (simple single-skill package)
     const rootSkill = await parseSkillMd(join(pkgDir, 'SKILL.md'));
     if (rootSkill) {
-      addSkill({
+      skills.push({
         packageName,
         packageVersion,
         skillName: sanitizePackageName(packageName),
@@ -134,7 +127,7 @@ async function scanNodeModulesDir(
           }
           const skill = await parseSkillMd(join(skillDir, 'SKILL.md'));
           if (skill) {
-            addSkill({
+            skills.push({
               packageName,
               packageVersion,
               skillName: name,
@@ -214,18 +207,14 @@ async function discoverNodeModuleSkills(
   const packageRoots = await getWorkspacePackageRoots(workspaceRoot);
   const allRoots = [workspaceRoot, ...packageRoots];
 
-  const allSkills = new Map<string, NpmSkill>();
+  const allSkills: NpmSkill[] = [];
 
   for (const root of allRoots) {
     const skills = await scanNodeModulesDir(root, source);
-    for (const skill of skills) {
-      if (!allSkills.has(skill.targetName)) {
-        allSkills.set(skill.targetName, skill);
-      }
-    }
+    allSkills.push(...skills);
   }
 
-  return Array.from(allSkills.values());
+  return allSkills;
 }
 
 export async function runSync(_args: string[], options: SyncOptions = {}): Promise<void> {
@@ -264,10 +253,18 @@ export async function runSync(_args: string[], options: SyncOptions = {}): Promi
 
   // 1. Discover skills from node_modules
   spinner.start('Scanning node_modules for skills…');
-  let discoveredSkills = await discoverNodeModuleSkills(cwd, {
+  const discovered = await discoverNodeModuleSkills(cwd, {
     source: options.source,
     recursive: options.recursive,
   });
+  const resolved = resolveNpmSkillConflicts(discovered);
+  let discoveredSkills = resolved.skills;
+
+  for (const conflict of resolved.conflicts) {
+    p.log.warn(
+      `${conflict.targetName} is provided by both ${conflict.selectedPackage} and ${conflict.ignoredPackage}; using ${conflict.selectedPackage}`
+    );
+  }
 
   if (discoveredSkills.length === 0) {
     spinner.stop(pc.yellow('No skills found'));

@@ -2,11 +2,16 @@ import { describe, it, expect } from 'vitest';
 import {
   sanitizePackageName,
   createTargetName,
+  getPackageDeps,
   matchesPattern,
   filterNpmSkills,
+  resolveNpmSkillConflicts,
   buildNpmSyncTelemetryPackages,
   type NpmSkill,
 } from '../src/sync-utils.ts';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('sanitizePackageName', () => {
   it('strips leading @', () => {
@@ -41,6 +46,27 @@ describe('createTargetName', () => {
 
   it('handles scoped packages for subdir skills', () => {
     expect(createTargetName('@vercel/ai-sdk', 'coding')).toBe('npm-vercel-ai-sdk-coding');
+  });
+});
+
+describe('getPackageDeps', () => {
+  it('returns every direct package.json dependency class', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'skills-sync-deps-'));
+    try {
+      await writeFile(
+        join(cwd, 'package.json'),
+        JSON.stringify({
+          dependencies: { react: '^19' },
+          devDependencies: { vitest: '^4' },
+          optionalDependencies: { sharp: '^0.34' },
+          peerDependencies: { next: '^16' },
+        })
+      );
+
+      expect((await getPackageDeps(cwd))?.sort()).toEqual(['next', 'react', 'sharp', 'vitest']);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 });
 
@@ -98,6 +124,38 @@ describe('buildNpmSyncTelemetryPackages', () => {
     ];
 
     expect(buildNpmSyncTelemetryPackages(skills)).toEqual([]);
+  });
+});
+
+describe('resolveNpmSkillConflicts', () => {
+  it('keeps the first resolved package and reports the ignored collision', () => {
+    const rootSkill: NpmSkill = {
+      packageName: '@scope/tool',
+      packageVersion: '2.0.0',
+      skillName: 'migrate',
+      skillPath: '/repo/node_modules/@scope/tool/skills/migrate/SKILL.md',
+      targetName: 'npm-scope-tool-migrate',
+      name: 'Migrate',
+      description: 'Root package skill',
+    };
+    const nestedSkill: NpmSkill = {
+      ...rootSkill,
+      packageName: 'scope-tool',
+      packageVersion: '1.0.0',
+      skillPath: '/repo/packages/app/node_modules/scope-tool/skills/migrate/SKILL.md',
+      description: 'Workspace package skill',
+    };
+
+    expect(resolveNpmSkillConflicts([rootSkill, nestedSkill])).toEqual({
+      skills: [rootSkill],
+      conflicts: [
+        {
+          targetName: 'npm-scope-tool-migrate',
+          selectedPackage: '@scope/tool',
+          ignoredPackage: 'scope-tool',
+        },
+      ],
+    });
   });
 });
 

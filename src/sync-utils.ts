@@ -21,6 +21,12 @@ export interface NpmSyncTelemetryPackage {
   version?: string;
 }
 
+export interface NpmSkillConflict {
+  targetName: string;
+  selectedPackage: string;
+  ignoredPackage: string;
+}
+
 export function sanitizePackageName(packageName: string): string {
   return packageName.replace(/^@/, '').replace(/\//g, '-').toLowerCase();
 }
@@ -36,7 +42,12 @@ export async function getPackageDeps(cwd: string): Promise<string[] | null> {
   try {
     const content = await readFile(join(cwd, 'package.json'), 'utf-8');
     const data = JSON.parse(content);
-    return Object.keys({ ...data.dependencies, ...data.devDependencies });
+    return Object.keys({
+      ...data.dependencies,
+      ...data.devDependencies,
+      ...data.optionalDependencies,
+      ...data.peerDependencies,
+    });
   } catch {
     return null;
   }
@@ -174,6 +185,34 @@ export function filterNpmSkills(
   }
 
   return { skills: result, excludedCount: skills.length - result.length };
+}
+
+/**
+ * Resolve the rare case where two package names sanitize to the same npm-* target.
+ * Input order is priority order: the project root is scanned before workspace packages.
+ */
+export function resolveNpmSkillConflicts(skills: NpmSkill[]): {
+  skills: NpmSkill[];
+  conflicts: NpmSkillConflict[];
+} {
+  const selected = new Map<string, NpmSkill>();
+  const conflicts: NpmSkillConflict[] = [];
+
+  for (const skill of skills) {
+    const existing = selected.get(skill.targetName);
+    if (!existing) {
+      selected.set(skill.targetName, skill);
+      continue;
+    }
+
+    conflicts.push({
+      targetName: skill.targetName,
+      selectedPackage: existing.packageName,
+      ignoredPackage: skill.packageName,
+    });
+  }
+
+  return { skills: [...selected.values()], conflicts };
 }
 
 export function buildNpmSyncTelemetryPackages(skills: NpmSkill[]): NpmSyncTelemetryPackage[] {
