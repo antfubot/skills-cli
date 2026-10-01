@@ -1,9 +1,9 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { readdir, readFile, stat } from 'fs/promises';
-import { join, relative, sep } from 'path';
+import { readdir, readFile } from 'fs/promises';
+import { join, sep } from 'path';
 import { homedir } from 'os';
-import { parseSkillMd } from './skills.ts';
+import { hasSkillMd, parseSkillMd } from './skills.ts';
 import { installSkillForAgent, getCanonicalPath } from './installer.ts';
 import {
   detectInstalledAgents,
@@ -47,76 +47,43 @@ interface PackageSkill extends Skill {
   skillPath: string;
 }
 
-/** Where a published package may place skills, relative to its root. */
-const PACKAGE_SKILL_DIRS = ['skills', join('dist', 'skills')];
-
-interface PackageManifest {
+interface PackageJson {
   version?: string;
-  dependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 }
 
-function isStringMap(value: unknown): value is Record<string, string> {
-  return (
-    !!value && typeof value === 'object' && Object.values(value).every((v) => typeof v === 'string')
-  );
-}
-
-async function readPackageManifest(dir: string): Promise<PackageManifest | null> {
-  let parsed: unknown;
+async function readPackageJson(dir: string): Promise<PackageJson | null> {
   try {
-    parsed = JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
+    return JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object') return null;
-  return {
-    version: 'version' in parsed && typeof parsed.version === 'string' ? parsed.version : undefined,
-    dependencies:
-      'dependencies' in parsed && isStringMap(parsed.dependencies) ? parsed.dependencies : {},
-    devDependencies:
-      'devDependencies' in parsed && isStringMap(parsed.devDependencies)
-        ? parsed.devDependencies
-        : {},
-  };
-}
-
-function dependencyNames(pkg: PackageManifest): string[] {
-  return [...new Set([...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)])];
 }
 
 async function discoverPackageSkills(pkgDir: string, packageName: string): Promise<PackageSkill[]> {
-  const packageVersion = (await readPackageManifest(pkgDir))?.version;
+  const pkg = await readPackageJson(pkgDir);
+  if (!pkg) return []; // not installed
 
-  const rootSkill = await parseSkillMd(join(pkgDir, 'SKILL.md'));
+  const rootSkill = (await hasSkillMd(pkgDir))
+    ? await parseSkillMd(join(pkgDir, 'SKILL.md'))
+    : null;
   if (rootSkill) {
-    return [{ ...rootSkill, packageName, packageVersion, skillPath: 'SKILL.md' }];
+    return [{ ...rootSkill, packageName, packageVersion: pkg.version, skillPath: 'SKILL.md' }];
   }
 
   const skills: PackageSkill[] = [];
-  for (const relativeDir of PACKAGE_SKILL_DIRS) {
-    const searchDir = join(pkgDir, relativeDir);
-    let entries: string[];
-    try {
-      entries = await readdir(searchDir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
-      const skillDir = join(searchDir, name);
-      try {
-        if (!(await stat(skillDir)).isDirectory()) continue;
-      } catch {
-        continue;
-      }
-      const skillMdPath = join(skillDir, 'SKILL.md');
-      const skill = await parseSkillMd(skillMdPath);
+  for (const dir of ['skills', 'dist/skills']) {
+    for (const name of await readdir(join(pkgDir, dir)).catch(() => [])) {
+      const skillDir = join(pkgDir, dir, name);
+      if (!(await hasSkillMd(skillDir))) continue;
+      const skill = await parseSkillMd(join(skillDir, 'SKILL.md'));
       if (skill) {
         skills.push({
           ...skill,
           packageName,
-          packageVersion,
-          skillPath: relative(pkgDir, skillMdPath).split(sep).join('/'),
+          packageVersion: pkg.version,
+          skillPath: `${dir}/${name}/SKILL.md`,
         });
       }
     }
@@ -131,20 +98,15 @@ async function discoverPackageSkills(pkgDir: string, packageName: string): Promi
  * version resolution decides which copy of a package is seen.
  */
 async function discoverNodeModuleSkills(cwd: string): Promise<PackageSkill[]> {
-  const pkg = await readPackageManifest(cwd);
+  const pkg = await readPackageJson(cwd);
   if (!pkg) return [];
 
-  const nodeModulesDir = join(cwd, 'node_modules');
+  const names = new Set([
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}),
+  ]);
   const perPackage = await Promise.all(
-    dependencyNames(pkg).map(async (name) => {
-      const pkgDir = join(nodeModulesDir, name);
-      try {
-        if (!(await stat(pkgDir)).isDirectory()) return [];
-      } catch {
-        return [];
-      }
-      return discoverPackageSkills(pkgDir, name);
-    })
+    [...names].map((name) => discoverPackageSkills(join(cwd, 'node_modules', name), name))
   );
   return perPackage.flat();
 }
