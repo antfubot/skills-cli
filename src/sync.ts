@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { lstat, readdir, readFile, readlink, rm } from 'fs/promises';
-import { dirname, join, resolve, sep } from 'path';
+import { dirname, join, posix, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { hasSkillMd, parseSkillMd } from './skills.ts';
 import {
@@ -40,6 +40,24 @@ export interface SyncOptions {
   copy?: boolean;
   dryRun?: boolean;
   cleanup?: boolean;
+  include?: string[];
+  exclude?: string[];
+}
+
+/**
+ * `<package>` matches every skill of a package, `<package>#<skill>` one of them.
+ * Both parts are globs. Package names cannot contain `#`, so the split is unambiguous.
+ */
+function matchesSkill(skill: PackageSkill, patterns: string[]): boolean {
+  return patterns.some((pattern) => {
+    const hash = pattern.indexOf('#');
+    const packagePattern = hash === -1 ? pattern : pattern.slice(0, hash);
+    const skillPattern = hash === -1 ? '**' : pattern.slice(hash + 1);
+    return (
+      posix.matchesGlob(skill.packageName, packagePattern) &&
+      posix.matchesGlob(sanitizeName(skill.name), skillPattern)
+    );
+  });
 }
 
 /**
@@ -242,7 +260,7 @@ async function resolveConflicts(
       for (const skill of candidates) {
         skipped.push({
           skill,
-          reason: `also shipped by ${packages}; install the one you want with \`skills add\``,
+          reason: `shipped by ${packages}; drop this one with --exclude ${skill.packageName}#${name}`,
         });
       }
       continue;
@@ -311,7 +329,12 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
 
   // 1. Discover skills from node_modules
   spinner.start('Scanning node_modules for skills…');
-  const discoveredSkills = await discoverNodeModuleSkills(cwd);
+  const { include, exclude } = options;
+  const discoveredSkills = (await discoverNodeModuleSkills(cwd)).filter(
+    (skill) =>
+      (!include?.length || matchesSkill(skill, include)) &&
+      !(exclude?.length && matchesSkill(skill, exclude))
+  );
   spinner.stop(
     discoveredSkills.length === 0
       ? pc.yellow('No skills found')
@@ -597,8 +620,15 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
 
 export function parseSyncOptions(args: string[]): { options: SyncOptions } {
   const options: SyncOptions = {};
+  let i = 0;
+  /** Consume the values after a flag, up to the next flag. */
+  const takeValues = (): string[] => {
+    const values: string[] = [];
+    while (args[i + 1] !== undefined && !args[i + 1]!.startsWith('-')) values.push(args[++i]!);
+    return values;
+  };
 
-  for (let i = 0; i < args.length; i++) {
+  for (; i < args.length; i++) {
     const arg = args[i];
 
     if (arg === '-y' || arg === '--yes') {
@@ -610,15 +640,11 @@ export function parseSyncOptions(args: string[]): { options: SyncOptions } {
     } else if (arg === '--no-cleanup') {
       options.cleanup = false;
     } else if (arg === '-a' || arg === '--agent') {
-      options.agent = options.agent || [];
-      i++;
-      let nextArg = args[i];
-      while (i < args.length && nextArg && !nextArg.startsWith('-')) {
-        options.agent.push(nextArg);
-        i++;
-        nextArg = args[i];
-      }
-      i--;
+      options.agent = [...(options.agent ?? []), ...takeValues()];
+    } else if (arg === '--include') {
+      options.include = [...(options.include ?? []), ...takeValues()];
+    } else if (arg === '--exclude') {
+      options.exclude = [...(options.exclude ?? []), ...takeValues()];
     }
   }
 

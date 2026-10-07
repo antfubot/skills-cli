@@ -449,6 +449,90 @@ describe('experimental_sync command', () => {
     });
   });
 
+  describe('filters', () => {
+    const sync = (...flags: string[]) =>
+      runCli(['experimental_sync', '-y', '-a', 'claude-code', ...flags], testDir);
+    const installed = (name: string) => existsSync(join(testDir, '.agents', 'skills', name));
+
+    beforeEach(() => {
+      declareDeps(['@acme/tools', '@acme/docs', 'other-lib']);
+      writeSkill(join(createPackage('@acme/tools'), 'skills', 'tool-a'), 'tool-a');
+      const docs = createPackage('@acme/docs');
+      writeSkill(join(docs, 'skills', 'docs-a'), 'docs-a');
+      writeSkill(join(docs, 'skills', 'docs-b'), 'docs-b');
+      writeSkill(join(createPackage('other-lib'), 'skills', 'other-a'), 'other-a');
+    });
+
+    it('--include <package> keeps only matching packages', () => {
+      sync('--include', '@acme/*');
+
+      expect(installed('tool-a')).toBe(true);
+      expect(installed('docs-a')).toBe(true);
+      expect(installed('other-a')).toBe(false);
+    });
+
+    it('--exclude <package> skips every skill of the package', () => {
+      sync('--exclude', '@acme/docs', 'other-lib');
+
+      expect(installed('tool-a')).toBe(true);
+      expect(installed('docs-a')).toBe(false);
+      expect(installed('docs-b')).toBe(false);
+      expect(installed('other-a')).toBe(false);
+    });
+
+    it('--exclude <package>#<skill> skips one skill of the package', () => {
+      sync('--exclude', '@acme/docs#docs-a');
+
+      expect(installed('docs-a')).toBe(false);
+      expect(installed('docs-b')).toBe(true);
+    });
+
+    it('--include <package>#<skill> accepts a glob for the skill', () => {
+      sync('--include', '@acme/docs#*-b');
+
+      expect(installed('docs-a')).toBe(false);
+      expect(installed('docs-b')).toBe(true);
+      expect(installed('tool-a')).toBe(false);
+    });
+
+    it('a bare pattern matches package names, not skill names', () => {
+      sync('--exclude', 'docs-a');
+
+      expect(installed('docs-a')).toBe(true);
+    });
+
+    it('--exclude wins over --include', () => {
+      sync('--include', '@acme/**', '--exclude', '@acme/docs');
+
+      expect(installed('tool-a')).toBe(true);
+      expect(installed('docs-a')).toBe(false);
+    });
+
+    it('excluding a skill that was installed earlier removes it', () => {
+      sync();
+      expect(installed('docs-a')).toBe(true);
+
+      sync('--exclude', '@acme/docs#docs-a');
+
+      expect(installed('docs-a')).toBe(false);
+      expect(installed('docs-b')).toBe(true);
+    });
+
+    it('resolves a name conflict by excluding one copy', () => {
+      declareDeps(['pkg-a', 'pkg-b']);
+      writeSkill(join(createPackage('pkg-a'), 'skills', 'migrate'), 'migrate');
+      writeSkill(join(createPackage('pkg-b'), 'skills', 'migrate'), 'migrate');
+
+      const conflicted = sync();
+      expect(conflicted.stdout).toContain('--exclude pkg-b#migrate');
+
+      sync('--exclude', 'pkg-b#migrate');
+
+      const lock = JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8'));
+      expect(lock.skills.migrate.source).toBe('pkg-a');
+    });
+  });
+
   describe('CLI routing', () => {
     it('shows experimental_sync in help output', () => {
       const result = runCli(['--help']);
