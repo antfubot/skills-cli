@@ -1,12 +1,13 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { lstat, readdir, readFile, readlink } from 'fs/promises';
+import { lstat, readdir, readFile, readlink, rm } from 'fs/promises';
 import { dirname, join, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { hasSkillMd, parseSkillMd } from './skills.ts';
 import {
   installSkillForAgent,
   getCanonicalPath,
+  getCanonicalSkillsDir,
   getInstallPath,
   sanitizeName,
   type InstallMode,
@@ -23,7 +24,9 @@ import {
   addSkillToLocalLock,
   computeSkillFolderHash,
   readLocalLock,
+  writeLocalLock,
   type LocalSkillLockEntry,
+  type LocalSkillLockFile,
 } from './local-lock.ts';
 import type { Skill, AgentType } from './types.ts';
 import { track } from './telemetry.ts';
@@ -36,6 +39,7 @@ export interface SyncOptions {
   yes?: boolean;
   copy?: boolean;
   dryRun?: boolean;
+  cleanup?: boolean;
 }
 
 /**
@@ -153,6 +157,61 @@ async function foreignDestination(
   return `${shortenPath(dest, cwd)} already exists and was not installed by sync`;
 }
 
+async function linksIntoNodeModules(path: string): Promise<boolean> {
+  try {
+    if (!(await lstat(path)).isSymbolicLink()) return false;
+    return isUnderNodeModules(resolve(dirname(path), await readlink(path)));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove skills that sync installed earlier and no dependency ships anymore.
+ * A name is a candidate when its lock entry comes from node_modules or its
+ * canonical dir links into node_modules. Only destinations sync owns are removed.
+ */
+async function pruneStaleSkills(
+  cwd: string,
+  keep: Set<string>,
+  lock: LocalSkillLockFile,
+  dryRun: boolean
+): Promise<string[]> {
+  const canonicalBase = getCanonicalSkillsDir(false, cwd);
+  const lockKeys = new Map<string, string>();
+  const explicit = new Set<string>();
+  for (const [key, entry] of Object.entries(lock.skills)) {
+    if (entry.sourceType === 'node_modules') lockKeys.set(sanitizeName(key), key);
+    else explicit.add(sanitizeName(key));
+  }
+
+  const candidates = new Set(lockKeys.keys());
+  for (const name of await readdir(canonicalBase).catch(() => [])) {
+    if (await linksIntoNodeModules(join(canonicalBase, name))) candidates.add(name);
+  }
+  const stale = [...candidates].filter((name) => !keep.has(name) && !explicit.has(name)).sort();
+  if (dryRun || stale.length === 0) return stale;
+
+  const allAgents = Object.keys(agents) as AgentType[];
+  for (const name of stale) {
+    const canonicalDir = join(canonicalBase, name);
+    const key = lockKeys.get(name);
+    const lockEntry = key ? lock.skills[key] : undefined;
+    const destinations = new Set([
+      canonicalDir,
+      ...allAgents.map((agent) => getInstallPath(name, agent, { cwd })),
+    ]);
+    for (const dest of destinations) {
+      if (!(await foreignDestination(dest, canonicalDir, lockEntry, cwd))) {
+        await rm(dest, { recursive: true, force: true });
+      }
+    }
+    if (key) delete lock.skills[key];
+  }
+  await writeLocalLock(lock, cwd);
+  return stale;
+}
+
 interface SkippedSkill {
   skill: PackageSkill;
   reason: string;
@@ -253,16 +312,27 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
   // 1. Discover skills from node_modules
   spinner.start('Scanning node_modules for skills…');
   const discoveredSkills = await discoverNodeModuleSkills(cwd);
+  spinner.stop(
+    discoveredSkills.length === 0
+      ? pc.yellow('No skills found')
+      : `Found ${pc.green(String(discoveredSkills.length))} skill${discoveredSkills.length > 1 ? 's' : ''} in node_modules`
+  );
+
+  const localLock = await readLocalLock(cwd);
+  if (options.cleanup !== false) {
+    const keep = new Set(discoveredSkills.map((skill) => sanitizeName(skill.name)));
+    const stale = await pruneStaleSkills(cwd, keep, localLock, options.dryRun ?? false);
+    for (const name of stale) {
+      p.log.info(
+        `${options.dryRun ? 'Would remove' : 'Removed'} ${pc.cyan(name)} ${pc.dim('(no longer shipped by a dependency)')}`
+      );
+    }
+  }
 
   if (discoveredSkills.length === 0) {
-    spinner.stop(pc.yellow('No skills found'));
     p.outro(pc.dim('No SKILL.md files found in the dependencies listed in package.json.'));
     return;
   }
-
-  spinner.stop(
-    `Found ${pc.green(String(discoveredSkills.length))} skill${discoveredSkills.length > 1 ? 's' : ''} in node_modules`
-  );
 
   // Show discovered skills
   for (const skill of discoveredSkills) {
@@ -271,8 +341,6 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
       p.log.message(pc.dim(`  ${skill.description}`));
     }
   }
-
-  const localLock = await readLocalLock(cwd);
 
   // 2. Select agents
   let targetAgents: AgentType[];
@@ -539,6 +607,8 @@ export function parseSyncOptions(args: string[]): { options: SyncOptions } {
       options.copy = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--no-cleanup') {
+      options.cleanup = false;
     } else if (arg === '-a' || arg === '--agent') {
       options.agent = options.agent || [];
       i++;

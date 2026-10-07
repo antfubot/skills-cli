@@ -358,6 +358,97 @@ describe('experimental_sync command', () => {
     });
   });
 
+  describe('cleanup', () => {
+    const sync = (...flags: string[]) =>
+      runCli(['experimental_sync', '-y', '-a', 'claude-code', ...flags], testDir);
+    const canonical = (name: string) => join(testDir, '.agents', 'skills', name);
+    const readLock = () => JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8'));
+
+    /** Install `gone` from `old-lib` and `kept` from `my-lib`, then drop `old-lib`. */
+    function syncThenRemoveDependency(...firstSyncFlags: string[]): void {
+      declareDeps(['old-lib', 'my-lib']);
+      writeSkill(join(createPackage('old-lib'), 'skills', 'gone'), 'gone');
+      writeSkill(join(createPackage('my-lib'), 'skills', 'kept'), 'kept');
+      mkdirSync(join(testDir, '.claude'));
+      sync(...firstSyncFlags);
+      declareDeps(['my-lib']);
+    }
+
+    it('removes links and lock entries for a dependency that was removed', () => {
+      syncThenRemoveDependency();
+
+      const result = sync();
+
+      expect(result.stdout).toContain('Removed');
+      expect(existsSync(canonical('gone'))).toBe(false);
+      expect(existsSync(join(testDir, '.claude', 'skills', 'gone'))).toBe(false);
+      expect(readLock().skills.gone).toBeUndefined();
+      expect(lstatSync(canonical('kept')).isSymbolicLink()).toBe(true);
+      expect(readLock().skills.kept).toBeDefined();
+    });
+
+    it('removes skills when the last dependency is removed', () => {
+      declareDeps(['old-lib']);
+      writeSkill(join(createPackage('old-lib'), 'skills', 'gone'), 'gone');
+      sync();
+      declareDeps([]);
+
+      const result = sync();
+
+      expect(result.stdout).toContain('No skills found');
+      expect(existsSync(canonical('gone'))).toBe(false);
+      expect(readLock().skills.gone).toBeUndefined();
+    });
+
+    it('removes copies made with --copy', () => {
+      syncThenRemoveDependency('--copy');
+      expect(lstatSync(join(testDir, '.claude', 'skills', 'gone')).isDirectory()).toBe(true);
+
+      sync();
+
+      expect(existsSync(join(testDir, '.claude', 'skills', 'gone'))).toBe(false);
+    });
+
+    it('never removes skills installed with skills add or written by hand', () => {
+      declareDeps([]);
+      writeSkill(canonical('added'), 'added');
+      writeSkill(canonical('handwritten'), 'handwritten');
+      writeFileSync(
+        join(testDir, 'skills-lock.json'),
+        JSON.stringify({
+          version: 1,
+          skills: { added: { source: 'owner/repo', sourceType: 'github', computedHash: 'x' } },
+        })
+      );
+
+      sync();
+
+      expect(existsSync(join(canonical('added'), 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(canonical('handwritten'), 'SKILL.md'))).toBe(true);
+      expect(readLock().skills.added).toBeDefined();
+    });
+
+    it('keeps everything with --no-cleanup', () => {
+      syncThenRemoveDependency();
+
+      sync('--no-cleanup');
+
+      expect(lstatSync(canonical('gone')).isSymbolicLink()).toBe(true);
+      expect(readLock().skills.gone).toBeDefined();
+    });
+
+    it('only reports with --dry-run', () => {
+      syncThenRemoveDependency();
+
+      const result = sync('--dry-run');
+
+      expect(result.stdout).toContain('Would remove');
+      expect(result.stdout).toContain('gone');
+      expect(lstatSync(canonical('gone')).isSymbolicLink()).toBe(true);
+      expect(readLock().skills.gone).toBeDefined();
+    });
+  });
+
   describe('CLI routing', () => {
     it('shows experimental_sync in help output', () => {
       const result = runCli(['--help']);
