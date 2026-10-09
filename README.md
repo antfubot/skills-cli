@@ -263,6 +263,69 @@ npx skills rm my-skill
 | `-y, --yes`    | Skip confirmation prompts                        |
 | `--all`        | Shorthand for `--skill '*' --agent '*' -y`       |
 
+## Experimental Features
+
+<details>
+<summary>Commands prefixed with <code>experimental_</code> are previews. Their names, options, and behavior may change or be removed in any release without notice.</summary>
+
+### `skills experimental_install`
+
+Restore the project skills recorded in `skills-lock.json` into `.agents/skills/`. Skills that came from `node_modules` are handed to `experimental_sync`.
+
+```bash
+# Restore after cloning a project that checks in skills-lock.json
+npx skills experimental_install
+```
+
+### `skills experimental_sync`
+
+Install skills shipped by your `dependencies` and `devDependencies` from `node_modules` into agent directories. A package ships skills as a root `SKILL.md` or under `skills/` or `dist/skills/`.
+
+Packages and the project itself can also request skills they do not ship through a `skills` field in `package.json`, following the [skills-npm spec](https://github.com/antfu/skills-npm/blob/main/SPEC.md):
+
+```json
+{
+  "skills": [
+    "npm:some-package",
+    { "source": "npm:other-package", "skills": ["only-this-skill"] },
+    "vercel-labs/agent-skills",
+    {
+      "source": "https://github.com/owner/repo",
+      "ref": "v1",
+      "skills": ["pr-review"]
+    }
+  ]
+}
+```
+
+```bash
+# Sync interactively
+npx skills experimental_sync
+
+# Preview without changing anything
+npx skills experimental_sync --dry-run
+
+# Sync without prompts to specific agents
+npx skills experimental_sync -y -a claude-code -a cursor
+
+# Only sync one package, or one skill from a package
+npx skills experimental_sync --include some-package
+npx skills experimental_sync --include 'some-package#pdf'
+```
+
+| Option                    | Description                                                       |
+| ------------------------- | ----------------------------------------------------------------- |
+| `-a, --agent <agents...>` | Agents to sync to (use `'*'` for all)                             |
+| `-y, --yes`               | Skip confirmation prompts                                         |
+| `--copy`                  | Copy skills instead of linking them to `node_modules`             |
+| `--dry-run`               | Show what would change without changing anything                  |
+| `--no-cleanup`            | Keep skills whose package no longer ships them                    |
+| `--no-remote`             | Skip git sources listed in `package.json` `skills` fields         |
+| `--include <patterns...>` | Only sync matching packages (`<pkg>`) or skills (`<pkg>#<skill>`) |
+| `--exclude <patterns...>` | Skip matching packages (`<pkg>`) or skills (`<pkg>#<skill>`)      |
+
+</details>
+
 ## What are Agent Skills?
 
 Agent skills are reusable instruction sets that extend your coding agent's capabilities. They're defined in `SKILL.md`
