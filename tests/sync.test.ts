@@ -108,6 +108,24 @@ describe('experimental_sync command', () => {
       expect(result.stdout).toContain('dev-skill');
     });
 
+    it('reads optionalDependencies and peerDependencies', () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({
+          optionalDependencies: { 'opt-tool': '*', 'not-installed': '*' },
+          peerDependencies: { 'peer-tool': '*' },
+        })
+      );
+      writeSkill(createPackage('opt-tool'), 'opt-skill');
+      writeSkill(createPackage('peer-tool'), 'peer-skill');
+
+      const result = runCli(['experimental_sync', '-y', '-a', 'claude-code'], testDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(testDir, '.agents', 'skills', 'opt-skill'))).toBe(true);
+      expect(existsSync(join(testDir, '.agents', 'skills', 'peer-skill'))).toBe(true);
+    });
+
     it('ignores packages that are not direct dependencies', () => {
       declareDeps(['direct-pkg']);
       writeSkill(createPackage('direct-pkg'), 'direct-skill');

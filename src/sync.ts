@@ -94,6 +94,8 @@ interface PackageJson {
   version?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
   /** Validated by parseSkillsField. */
   skills?: unknown;
 }
@@ -155,6 +157,16 @@ function findInstalledPackage(from: string, name: string): string | undefined {
   }
 }
 
+type FieldRemoteRequest = RemoteSkillsRequest & { via: string };
+
+/** Every package the project declares; a missing one (e.g. an omitted optional) is skipped. */
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+] as const;
+
 /**
  * Find skills shipped by the project's direct dependencies, plus the skills
  * that `npm:` entries in `skills` fields point at. Fields are read from the
@@ -164,8 +176,6 @@ function findInstalledPackage(from: string, name: string): string | undefined {
  * reaches the agent only when a direct dependency names it, and the package
  * manager's version resolution decides which copy of a package is seen.
  */
-type FieldRemoteRequest = RemoteSkillsRequest & { via: string };
-
 async function discoverNodeModuleSkills(cwd: string): Promise<{
   skills: PackageSkill[];
   remote: FieldRemoteRequest[];
@@ -190,9 +200,7 @@ async function discoverNodeModuleSkills(cwd: string): Promise<{
     }
   };
 
-  const deps = [
-    ...new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]),
-  ];
+  const deps = [...new Set(DEPENDENCY_FIELDS.flatMap((field) => Object.keys(pkg[field] ?? {})))];
   const shipped = await Promise.all(
     deps.map((name) => discoverPackageSkills(join(cwd, 'node_modules', name), name, 0))
   );
