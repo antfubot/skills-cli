@@ -8,14 +8,11 @@ const availableSkills = (names: string[]) =>
 
 /**
  * Every user-facing error and warning the CLI raises. Codes are permanent:
- * each one has a matching heading in docs/troubleshooting.md, so never rename
- * or reuse a code. Categories: C = command line, S = sources and skill
+ * never rename or reuse one. Categories: C = command line, S = sources and skill
  * selection, G = git, D = download, A = archive, I = install, P = package.json
  * "skills" field, N = Notion, U = `skills use`, E = internal.
  */
 export const diagnostics = defineDiagnostics({
-  docsBase: (code) =>
-    `https://github.com/vercel-labs/skills/blob/main/docs/troubleshooting.md#${code.toLowerCase()}`,
   // `why` is the full user-facing message; `fix` only carries guidance that is
   // printed as its own line.
   codes: {
@@ -162,6 +159,7 @@ export const diagnostics = defineDiagnostics({
       why: 'Downloaded URL is not a valid SKILL.md file or supported archive',
     },
 
+    // Never shown: callers treat an unreadable archive as "not an archive".
     SKILLS_A001: {
       why: (p: { reason: string }) => p.reason,
     },
@@ -256,27 +254,57 @@ export const diagnostics = defineDiagnostics({
       why: 'Notion CLI (ntn) is required. Install it from:\nhttps://developers.notion.com/cli/get-started/overview\nThen run `ntn login`.',
     },
     SKILLS_N002: {
-      why: (p: { reason: string }) => p.reason,
+      why: (p: { stderr: string; exitCode: number | null }) =>
+        `ntn api failed${p.stderr ? `: ${p.stderr}` : ` with exit code ${p.exitCode ?? 'unknown'}`}`,
     },
     SKILLS_N003: {
-      why: (p: { reason: string }) => p.reason,
+      why: (p: { seconds: number }) => `ntn api timed out after ${p.seconds} seconds`,
     },
     SKILLS_N004: {
-      why: 'Notion returned no packs for the authenticated workspace',
+      why: 'ntn api output exceeded 10 MiB',
     },
     SKILLS_N005: {
+      why: (p: { detail: string }) => `Unable to start ntn: ${p.detail}`,
+    },
+    SKILLS_N006: {
+      why: (p: { response: 'response' | 'list response'; field: string }) =>
+        `Notion Agent Plugins ${p.response} is missing ${p.field}`,
+    },
+    SKILLS_N007: {
+      why: (p: { response: 'response' | 'list response'; field: string }) =>
+        `Notion Agent Plugins ${p.response} has an invalid ${p.field}`,
+    },
+    SKILLS_N008: {
+      why: 'Notion Agent Plugins response contains an invalid pack',
+    },
+    SKILLS_N009: {
+      why: 'Notion Agent Plugins list response is invalid',
+    },
+    SKILLS_N010: {
+      why: (p: { label: string }) => `Notion ${p.label} directory response is invalid`,
+    },
+    SKILLS_N011: {
+      why: (p: { label: string }) => `ntn returned invalid JSON for ${p.label}`,
+    },
+    SKILLS_N012: {
+      why: 'Notion Agent Plugins pagination returned an invalid cursor',
+    },
+    SKILLS_N013: {
+      why: 'Notion returned no packs for the authenticated workspace',
+    },
+    SKILLS_N014: {
       why: (p: { requested: string[] }) =>
         `No matching Notion packs found for: ${p.requested.join(', ')}`,
     },
-    SKILLS_N006: {
+    SKILLS_N015: {
       why: (p: { pack: string }) =>
         `Notion pack ${JSON.stringify(p.pack)} changed while preparing installation`,
     },
-    SKILLS_N007: {
+    SKILLS_N016: {
       why: (p: { pack: string; detail: string }) =>
         `Failed to prepare Notion pack ${JSON.stringify(p.pack)}: ${p.detail}`,
     },
-    SKILLS_N008: {
+    SKILLS_N017: {
       why: 'pack contains no valid skills',
     },
 
@@ -310,7 +338,7 @@ export type DiagnosticCode = keyof typeof diagnostics;
 
 const formatDiagnostic = ansiFormatter(pc);
 
-/** Render a caught error for the terminal, with code, fix, and docs link for diagnostics. */
+/** Render a caught error for the terminal, with code and fix for diagnostics. */
 export function formatError(error: unknown): string {
   if (error instanceof Diagnostic) return formatDiagnostic(error);
   return error instanceof Error ? error.message : String(error);

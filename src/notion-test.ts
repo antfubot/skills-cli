@@ -74,15 +74,13 @@ interface PrepareNotionSkillSourceOptions {
   download?: (url: string) => Promise<DownloadedSource>;
 }
 
-const invalidResponse = (reason: string) => diagnostics.SKILLS_N003({ reason });
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function assertString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw invalidResponse(`Notion Agent Plugins response is missing ${field}`);
+    throw diagnostics.SKILLS_N006({ response: 'response', field });
   }
   return value;
 }
@@ -90,18 +88,18 @@ function assertString(value: unknown, field: string): string {
 function optionalMetadata(value: unknown, field: string): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string') {
-    throw invalidResponse(`Notion Agent Plugins response has an invalid ${field}`);
+    throw diagnostics.SKILLS_N007({ response: 'response', field });
   }
   return sanitizeMetadata(value);
 }
 
 function parsePack(value: unknown): NotionPack | null {
   if (!isRecord(value)) {
-    throw invalidResponse('Notion Agent Plugins response contains an invalid pack');
+    throw diagnostics.SKILLS_N008();
   }
 
   if (typeof value.name !== 'string') {
-    throw invalidResponse('Notion Agent Plugins response is missing pack.name');
+    throw diagnostics.SKILLS_N006({ response: 'response', field: 'pack.name' });
   }
   const name = sanitizeMetadata(value.name);
   if (!name) return null;
@@ -116,15 +114,15 @@ function parsePack(value: unknown): NotionPack | null {
 
 function parsePackList(value: unknown): NotionPackListResponse {
   if (!isRecord(value) || !Array.isArray(value.results)) {
-    throw invalidResponse('Notion Agent Plugins list response is invalid');
+    throw diagnostics.SKILLS_N009();
   }
   if (typeof value.has_more !== 'boolean') {
-    throw invalidResponse('Notion Agent Plugins list response is missing has_more');
+    throw diagnostics.SKILLS_N006({ response: 'list response', field: 'has_more' });
   }
 
   const nextCursor = value.next_cursor;
   if (nextCursor !== null && typeof nextCursor !== 'string') {
-    throw invalidResponse('Notion Agent Plugins list response has an invalid next_cursor');
+    throw diagnostics.SKILLS_N007({ response: 'list response', field: 'next_cursor' });
   }
 
   const results = value.results.map(parsePack).filter((pack) => pack !== null);
@@ -138,7 +136,7 @@ function parsePackList(value: unknown): NotionPackListResponse {
 
 function parseDirectory(value: unknown, label: string): NotionDirectory {
   if (!isRecord(value)) {
-    throw invalidResponse(`Notion ${label} directory response is invalid`);
+    throw diagnostics.SKILLS_N010({ label });
   }
 
   return {
@@ -185,7 +183,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
       outputBytes += chunk.length;
       if (outputBytes > NTN_MAX_BUFFER_BYTES) {
         child.kill('SIGTERM');
-        fail(diagnostics.SKILLS_N002({ reason: 'ntn api output exceeded 10 MiB' }));
+        fail(diagnostics.SKILLS_N004());
         return;
       }
       chunks.push(chunk);
@@ -193,11 +191,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
 
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
-      fail(
-        diagnostics.SKILLS_N002({
-          reason: `ntn api timed out after ${NTN_TIMEOUT_MS / 1000} seconds`,
-        })
-      );
+      fail(diagnostics.SKILLS_N003({ seconds: NTN_TIMEOUT_MS / 1000 }));
     }, NTN_TIMEOUT_MS);
 
     child.stdout.on('data', (chunk: Buffer) => append(stdoutChunks, chunk));
@@ -207,12 +201,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
         fail(diagnostics.SKILLS_N001({ cause: error }));
         return;
       }
-      fail(
-        diagnostics.SKILLS_N002({
-          reason: `Unable to start ntn: ${stripTerminalEscapes(error.message)}`,
-          cause: error,
-        })
-      );
+      fail(diagnostics.SKILLS_N005({ detail: stripTerminalEscapes(error.message), cause: error }));
     });
     child.on('close', (code) => {
       const stdout = Buffer.concat(stdoutChunks).toString('utf8');
@@ -221,11 +210,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
         finish(() => resolve(stdout));
         return;
       }
-      fail(
-        diagnostics.SKILLS_N002({
-          reason: `ntn api failed${stderr ? `: ${stderr}` : ` with exit code ${code ?? 'unknown'}`}`,
-        })
-      );
+      fail(diagnostics.SKILLS_N002({ stderr, exitCode: code }));
     });
   });
 }
@@ -240,7 +225,7 @@ async function fetchNotionJson(
     return JSON.parse(output) as unknown;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw invalidResponse(`ntn returned invalid JSON for ${label}`);
+      throw diagnostics.SKILLS_N011({ label, cause: error });
     }
     throw error;
   }
@@ -264,7 +249,7 @@ export async function fetchNotionPacks(
 
     if (!page.has_more) break;
     if (!page.next_cursor || seenCursors.has(page.next_cursor)) {
-      throw invalidResponse('Notion Agent Plugins pagination returned an invalid cursor');
+      throw diagnostics.SKILLS_N012();
     }
     cursor = page.next_cursor;
     seenCursors.add(cursor);
@@ -285,7 +270,7 @@ export async function fetchNotionPackDirectory(
 
   const directory = parseDirectory(value, 'pack');
   if (directory.id !== pack.id || directory.version_id !== pack.version_id) {
-    throw diagnostics.SKILLS_N006({ pack: pack.name });
+    throw diagnostics.SKILLS_N015({ pack: pack.name });
   }
   return directory;
 }
@@ -438,7 +423,7 @@ export async function prepareNotionPackSource(
     `Found ${pc.green(packs.length)} Notion pack${packs.length === 1 ? '' : 's'}${inWorkspace(workspace)}`
   );
   if (packs.length === 0) {
-    throw diagnostics.SKILLS_N004();
+    throw diagnostics.SKILLS_N013();
   }
 
   if (options.list) {
@@ -451,7 +436,7 @@ export async function prepareNotionPackSource(
   if (options.skill && options.skill.length > 0) {
     selectedPacks = filterPacks(packs, options.skill);
     if (selectedPacks.length === 0) {
-      throw diagnostics.SKILLS_N005({ requested: options.skill });
+      throw diagnostics.SKILLS_N014({ requested: options.skill });
     }
   } else if (options.yes || !process.stdin.isTTY) {
     selectedPacks = packs;
@@ -503,7 +488,7 @@ export async function prepareNotionPackSource(
           fullDepth: true,
         });
         if (skills.length === 0) {
-          throw diagnostics.SKILLS_N008();
+          throw diagnostics.SKILLS_N017();
         }
 
         const directoryName = `pack-${index + 1}-${sanitizeName(pack.name).slice(0, 100)}`;
@@ -525,7 +510,7 @@ export async function prepareNotionPackSource(
         skillCount += skills.length;
       } catch (error) {
         const detail = error instanceof Error ? error.message : 'Unknown error';
-        throw diagnostics.SKILLS_N007({ pack: pack.name, detail, cause: error });
+        throw diagnostics.SKILLS_N016({ pack: pack.name, detail, cause: error });
       } finally {
         if (downloaded) await cleanupTempDir(downloaded.tempDir).catch(() => {});
       }

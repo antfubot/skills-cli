@@ -64,8 +64,7 @@ describe('skills CLI', () => {
       const output = runCliOutput(['unknown-command']);
       expect(output).toMatchInlineSnapshot(`
         "[SKILLS_C010] Unknown command: unknown-command
-        ├▶ fix: Run skills --help for usage.
-        ╰▶ see: https://github.com/vercel-labs/skills/blob/main/docs/troubleshooting.md#skills_c010
+        ╰▶ fix: Run skills --help for usage.
         "
       `);
     });

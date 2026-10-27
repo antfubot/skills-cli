@@ -105,7 +105,7 @@ If reading an older lock file version, it's wiped. Users must reinstall skills t
 
 ## Error Handling
 
-All user-facing errors and warnings come from the `nostics` catalog in `src/diagnostics.ts`. Throw `diagnostics.SKILLS_X({...})` instead of `new Error(...)`, check codes with `isDiagnostic(error, 'SKILLS_X')`, and print caught errors with `formatError(error)`. Codes are permanent: never rename or reuse one. Every new code needs a `#### SKILLS_X` entry in `docs/troubleshooting.md` (`tests/diagnostics-docs.test.ts` enforces this).
+All user-facing errors and warnings come from the `nostics` catalog in `src/diagnostics.ts`. Throw `diagnostics.SKILLS_X({...})` instead of `new Error(...)`, check codes with `isDiagnostic(error, 'SKILLS_X')`, and print caught errors with `formatError(error)`. Codes are permanent: never rename or reuse one.
 
 ## Factory collaboration
 

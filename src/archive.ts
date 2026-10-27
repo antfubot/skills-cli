@@ -24,8 +24,6 @@ export interface ArchiveLimits {
   maxEntries: number;
 }
 
-const corrupt = (reason: string) => diagnostics.SKILLS_A001({ reason });
-
 function ensureRange(buffer: Buffer, offset: number, length: number, label: string): void {
   if (
     !Number.isSafeInteger(offset) ||
@@ -34,7 +32,7 @@ function ensureRange(buffer: Buffer, offset: number, length: number, label: stri
     length < 0 ||
     offset + length > buffer.length
   ) {
-    throw corrupt(`Invalid zip archive: ${label} is out of bounds`);
+    throw diagnostics.SKILLS_A001({ reason: `Invalid zip archive: ${label} is out of bounds` });
   }
 }
 
@@ -55,7 +53,9 @@ function readUInt64AsNumber(buffer: Buffer, offset: number, label: string): numb
   ensureRange(buffer, offset, 8, label);
   const value = buffer.readBigUInt64LE(offset);
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw corrupt(`Invalid zip archive: ${label} exceeds the safe integer range`);
+    throw diagnostics.SKILLS_A001({
+      reason: `Invalid zip archive: ${label} exceeds the safe integer range`,
+    });
   }
   return Number(value);
 }
@@ -95,7 +95,7 @@ function readCentralDirectory(
   const locatorOffset = endOffset - 20;
   ensureRange(buffer, locatorOffset, 20, 'zip64 locator');
   if (buffer.readUInt32LE(locatorOffset) !== ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR) {
-    throw corrupt('Invalid zip64 locator');
+    throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 locator' });
   }
   if (
     buffer.readUInt32LE(locatorOffset + 4) !== 0 ||
@@ -107,16 +107,16 @@ function readCentralDirectory(
   const zip64EndOffset = readUInt64AsNumber(buffer, locatorOffset + 8, 'zip64 end offset');
   ensureRange(buffer, zip64EndOffset, 56, 'zip64 end of central directory');
   if (buffer.readUInt32LE(zip64EndOffset) !== ZIP64_END_OF_CENTRAL_DIRECTORY) {
-    throw corrupt('Invalid zip64 end of central directory');
+    throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 end of central directory' });
   }
 
   const recordSize = readUInt64AsNumber(buffer, zip64EndOffset + 4, 'zip64 end size');
   if (recordSize < 44) {
-    throw corrupt('Invalid zip64 end of central directory');
+    throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 end of central directory' });
   }
   ensureRange(buffer, zip64EndOffset, recordSize + 12, 'zip64 end of central directory');
   if (zip64EndOffset + recordSize + 12 !== locatorOffset) {
-    throw corrupt('Invalid zip64 end of central directory');
+    throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 end of central directory' });
   }
   if (
     buffer.readUInt32LE(zip64EndOffset + 16) !== 0 ||
@@ -166,13 +166,14 @@ function findExtraField(
   const extraEnd = extraOffset + extraLength;
   let offset = extraOffset;
   while (offset < extraEnd) {
-    if (offset + 4 > extraEnd) throw corrupt('Invalid zip extra field');
+    if (offset + 4 > extraEnd) throw diagnostics.SKILLS_A001({ reason: 'Invalid zip extra field' });
 
     const id = buffer.readUInt16LE(offset);
     const size = buffer.readUInt16LE(offset + 2);
     const dataOffset = offset + 4;
     ensureRange(buffer, dataOffset, size, 'zip extra field');
-    if (dataOffset + size > extraEnd) throw corrupt('Invalid zip extra field');
+    if (dataOffset + size > extraEnd)
+      throw diagnostics.SKILLS_A001({ reason: 'Invalid zip extra field' });
     if (id === targetId) return buffer.subarray(dataOffset, dataOffset + size);
 
     offset = dataOffset + size;
@@ -224,12 +225,12 @@ function readZip64EntryValues(
   }
 
   const zip64Extra = findExtraField(buffer, extraOffset, extraLength, 0x0001);
-  if (!zip64Extra) throw corrupt('Invalid zip64 extra field');
+  if (!zip64Extra) throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 extra field' });
 
   let valueOffset = 0;
   const readNextUInt64 = (label: string): number => {
     if (valueOffset + 8 > zip64Extra.length) {
-      throw corrupt(`Invalid zip64 extra field: missing ${label}`);
+      throw diagnostics.SKILLS_A001({ reason: `Invalid zip64 extra field: missing ${label}` });
     }
     const value = readUInt64AsNumber(zip64Extra, valueOffset, `zip64 ${label}`);
     valueOffset += 8;
@@ -248,7 +249,7 @@ function readZip64EntryValues(
   }
   if (resolved.diskStart === 0xffff) {
     if (valueOffset + 4 > zip64Extra.length) {
-      throw corrupt('Invalid zip64 extra field: missing disk start');
+      throw diagnostics.SKILLS_A001({ reason: 'Invalid zip64 extra field: missing disk start' });
     }
     resolved.diskStart = zip64Extra.readUInt32LE(valueOffset);
   }
@@ -261,7 +262,7 @@ function readZip64EntryValues(
 export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<string, Uint8Array> {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const endOffset = findEndOfCentralDirectory(buffer);
-  if (endOffset < 0) throw corrupt('Invalid zip archive');
+  if (endOffset < 0) throw diagnostics.SKILLS_A001({ reason: 'Invalid zip archive' });
 
   const centralDirectory = readCentralDirectory(buffer, endOffset);
   const totalEntries = centralDirectory.entries;
@@ -271,7 +272,9 @@ export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<st
 
   ensureRange(buffer, centralDirectory.offset, centralDirectory.size, 'central directory');
   if (centralDirectory.offset + centralDirectory.size > centralDirectory.trailerOffset) {
-    throw corrupt('Invalid zip archive: central directory overlaps archive trailer');
+    throw diagnostics.SKILLS_A001({
+      reason: 'Invalid zip archive: central directory overlaps archive trailer',
+    });
   }
 
   const files = new Map<string, Uint8Array>();
@@ -281,7 +284,7 @@ export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<st
   for (let index = 0; index < totalEntries; index++) {
     ensureRange(buffer, offset, 46, 'central directory entry');
     if (buffer.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_HEADER) {
-      throw corrupt('Invalid zip central directory entry');
+      throw diagnostics.SKILLS_A001({ reason: 'Invalid zip central directory entry' });
     }
 
     const flags = buffer.readUInt16LE(offset + 8);
@@ -339,7 +342,7 @@ export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<st
 
     ensureRange(buffer, localHeaderOffset, 30, 'local file header');
     if (buffer.readUInt32LE(localHeaderOffset) !== ZIP_LOCAL_FILE_HEADER) {
-      throw corrupt('Invalid zip local file header');
+      throw diagnostics.SKILLS_A001({ reason: 'Invalid zip local file header' });
     }
 
     const localFlags = buffer.readUInt16LE(localHeaderOffset + 6);
@@ -355,13 +358,17 @@ export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<st
     );
     const localFileName = buffer.subarray(localNameOffset, localNameOffset + localFileNameLength);
     if (localFlags !== flags || localMethod !== method || !localFileName.equals(centralFileName)) {
-      throw corrupt('Zip local header does not match central directory');
+      throw diagnostics.SKILLS_A001({
+        reason: 'Zip local header does not match central directory',
+      });
     }
 
     const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
     ensureRange(buffer, dataOffset, compressedSize, 'file data');
     if (dataOffset + compressedSize > centralDirectory.offset) {
-      throw corrupt('Invalid zip archive: file data overlaps central directory');
+      throw diagnostics.SKILLS_A001({
+        reason: 'Invalid zip archive: file data overlaps central directory',
+      });
     }
 
     const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize);
@@ -377,16 +384,16 @@ export function readZipArchive(bytes: Uint8Array, limits: ArchiveLimits): Map<st
     }
 
     if (contents.byteLength !== uncompressedSize) {
-      throw corrupt('Zip entry size mismatch');
+      throw diagnostics.SKILLS_A001({ reason: 'Zip entry size mismatch' });
     }
     if (crc32(contents) !== expectedChecksum) {
-      throw corrupt('Zip entry checksum mismatch');
+      throw diagnostics.SKILLS_A001({ reason: 'Zip entry checksum mismatch' });
     }
     files.set(fileName, new Uint8Array(contents));
   }
 
   if (offset !== centralDirectory.offset + centralDirectory.size) {
-    throw corrupt('Invalid zip central directory size');
+    throw diagnostics.SKILLS_A001({ reason: 'Invalid zip central directory size' });
   }
 
   return files;
