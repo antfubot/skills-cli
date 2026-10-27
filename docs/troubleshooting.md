@@ -235,6 +235,14 @@ A file in the skill is a symbolic link to a path that does not exist, so it was 
 
 `skills-lock.json` has an entry from a generic Git source, but no `sourceUrl`. Install the skill again with `skills add <git-url>` to record its source.
 
+#### SKILLS_I005
+
+`skills-lock.json` exists but cannot be used: it is not valid JSON (often from unresolved merge conflict markers), has the wrong shape, or uses an unsupported version. Fix or delete the file, then retry.
+
+#### SKILLS_I006
+
+A file in the skill is a symbolic link to a path outside the skill directory, so it was not copied. Copy the linked file into the skill directory instead.
+
 ### package.json `skills` field
 
 #### SKILLS_P001

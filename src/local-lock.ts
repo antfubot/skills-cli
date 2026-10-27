@@ -1,6 +1,7 @@
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'path';
 import { createHash } from 'crypto';
+import { diagnostics } from './diagnostics.ts';
 
 const LOCAL_LOCK_FILE = 'skills-lock.json';
 const CURRENT_VERSION = 1;
@@ -71,36 +72,70 @@ export function getLocalLockPath(cwd?: string): string {
 }
 
 /**
+ * Thrown when skills-lock.json exists but cannot be used, e.g. merge conflict
+ * markers, a missing `skills` map, or a schema version this CLI does not know.
+ * Treating such a file as empty would let the next write drop every entry.
+ */
+/**
  * Read the local skill lock file.
- * Returns an empty lock file structure if the file doesn't exist
- * or is corrupted (e.g., merge conflict markers).
+ * Returns an empty lock when the file does not exist; throws
+ * SKILLS_I005 when it exists but cannot be used.
  */
 export async function readLocalLock(cwd?: string): Promise<LocalSkillLockFile> {
   const lockDir = cwd || process.cwd();
   const lockPath = getLocalLockPath(lockDir);
 
+  let content: string;
   try {
-    const content = await readFile(lockPath, 'utf-8');
-    const parsed = JSON.parse(content) as LocalSkillLockFile;
-
-    if (typeof parsed.version !== 'number' || !parsed.skills) {
+    content = await readFile(lockPath, 'utf-8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return createEmptyLocalLock();
     }
-
-    if (parsed.version < CURRENT_VERSION) {
-      return createEmptyLocalLock();
-    }
-
-    for (const entry of Object.values(parsed.skills)) {
-      if (entry.sourceType === 'local' && !isAbsolute(entry.source)) {
-        entry.source = resolve(lockDir, entry.source);
-      }
-    }
-
-    return parsed;
-  } catch {
-    return createEmptyLocalLock();
+    throw error;
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'not valid JSON';
+    throw diagnostics.SKILLS_I005({ path: lockPath, reason, cause: error });
+  }
+
+  if (!isLocalLockShape(parsed)) {
+    throw diagnostics.SKILLS_I005({
+      path: lockPath,
+      reason: 'expected an object with "version" and "skills"',
+    });
+  }
+
+  if (parsed.version !== CURRENT_VERSION) {
+    throw diagnostics.SKILLS_I005({
+      path: lockPath,
+      reason: `unsupported lock version ${parsed.version} (expected ${CURRENT_VERSION})`,
+    });
+  }
+
+  for (const entry of Object.values(parsed.skills)) {
+    if (entry.sourceType === 'local' && !isAbsolute(entry.source)) {
+      entry.source = resolve(lockDir, entry.source);
+    }
+  }
+
+  return parsed;
+}
+
+function isLocalLockShape(value: unknown): value is LocalSkillLockFile {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'version' in value &&
+    typeof value.version === 'number' &&
+    'skills' in value &&
+    typeof value.skills === 'object' &&
+    value.skills !== null
+  );
 }
 
 /**

@@ -1,7 +1,7 @@
 import { homedir } from 'os';
 import type { AgentType } from './types.ts';
 import { agents } from './agents.ts';
-import { diagnostics, formatError } from './diagnostics.ts';
+import { diagnostics, formatError, isDiagnostic } from './diagnostics.ts';
 import { listInstalledSkills, sanitizeName, type InstalledSkill } from './installer.ts';
 import { sanitizeMetadata } from './sanitize.ts';
 import { getAllLockedSkills } from './skill-lock.ts';
@@ -74,6 +74,17 @@ export function parseListOptions(args: string[]): ListOptions {
   return options;
 }
 
+/** Listing is read-only, so an unusable lock only costs source info. */
+async function readProjectLockOrWarn(cwd: string): Promise<Record<string, ListLockEntry>> {
+  try {
+    return (await readLocalLock(cwd)).skills;
+  } catch (error) {
+    if (!isDiagnostic(error, 'SKILLS_I005')) throw error;
+    console.error(formatError(error));
+    return {};
+  }
+}
+
 export async function runList(args: string[]): Promise<void> {
   const options = parseListOptions(args);
 
@@ -105,7 +116,7 @@ export async function runList(args: string[]): Promise<void> {
   // Fetch lock entries to get source and plugin grouping info for the selected scope.
   const lockedSkills: Record<string, ListLockEntry> = scope
     ? await getAllLockedSkills()
-    : (await readLocalLock(cwd)).skills;
+    : await readProjectLockOrWarn(cwd);
   const lockEntriesBySanitizedName = new Map(
     Object.entries(lockedSkills).map(([name, entry]) => [sanitizeName(name), entry])
   );

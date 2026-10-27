@@ -237,6 +237,15 @@ export const diagnostics = defineDiagnostics({
       fix: 'Reinstall the skill with skills add <git-url> to record its source.',
     },
 
+    SKILLS_I005: {
+      why: (p: { path: string; reason: string }) => `Invalid ${p.path}: ${p.reason}.`,
+      fix: 'Fix or delete the file, then retry.',
+    },
+    SKILLS_I006: {
+      why: (p: { path: string }) =>
+        `Skipping symlink that points outside the skill directory: ${p.path}`,
+      fix: 'Copy the linked file into the skill directory instead of linking to it.',
+    },
     SKILLS_P001: {
       why: 'package.json: "skills" must be an array',
     },
