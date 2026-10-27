@@ -200,7 +200,7 @@ export async function runUse(
     }
 
     if (sourceArgs.length === 0) {
-      fail(diagnostics.SKILLS_C008({ name: 'source' }), getUseHelp());
+      fail(diagnostics.SKILLS_C008({ name: 'source' }), `\n${getUseHelp()}`);
     }
 
     if (sourceArgs.length > 1) {
@@ -337,7 +337,7 @@ export async function runUse(
     process.stdout.write(prompt);
   } catch (error) {
     await cleanupClone(cloneTempDir);
-    fail(error);
+    fail(error instanceof Error ? error : 'Unknown error');
   }
 }
 
@@ -421,8 +421,8 @@ function selectSkill(skills: Skill[], selector: string | undefined, source: stri
 
   const selected = filterSkills(skills, [selector]);
   if (selected.length === 0) {
-    throw diagnostics.SKILLS_S003({
-      requested: [selector],
+    throw diagnostics.SKILLS_U005({
+      selector,
       available: skills.map(getSkillDisplayName),
     });
   }
@@ -455,8 +455,8 @@ function selectWellKnownSkill(
         skill.name.toLowerCase() === selector.toLowerCase()
     );
     if (selected.length === 0) {
-      throw diagnostics.SKILLS_S003({
-        requested: [selector],
+      throw diagnostics.SKILLS_U005({
+        selector,
         available: skills.map((s) => s.installName),
       });
     }
@@ -616,6 +616,8 @@ async function cleanupClone(tempDir: string | null): Promise<void> {
 }
 
 function fail(...errors: unknown[]): never {
-  for (const error of errors) console.error(formatError(error));
+  for (const error of errors) {
+    console.error(error instanceof Error ? formatError(error) : String(error));
+  }
   process.exit(1);
 }

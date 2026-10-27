@@ -217,6 +217,18 @@ A well-known skill artifact is neither a zip nor a `.tar.gz` archive.
 
 A well-known skill archive has no `SKILL.md` at its root.
 
+#### SKILLS_A011
+
+A well-known skill archive entry has an absolute path, a backslash, or a `.`/`..` segment. The skill is skipped.
+
+#### SKILLS_A012
+
+A well-known skill archive extracts to more than the size limit. The skill is skipped.
+
+#### SKILLS_A013
+
+A well-known skill archive has more files than the limit. The skill is skipped.
+
 ### Installation
 
 #### SKILLS_I001
@@ -299,6 +311,10 @@ The Notion pack changed while the CLI was installing it. Try again.
 
 A selected Notion pack could not be prepared. The message includes the reason.
 
+#### SKILLS_N008
+
+A selected Notion pack contains no valid skills. Each skill needs a `SKILL.md` with `name` and `description` in its frontmatter.
+
 ### `skills use`
 
 #### SKILLS_U001
@@ -316,6 +332,10 @@ The agent's command is not on your `PATH`. Install the agent, or pipe `skills us
 #### SKILLS_U004
 
 `skills use --agent` accepts exactly one agent.
+
+#### SKILLS_U005
+
+No skill in the source matches the `skills use` selector. The message lists the available skills.
 
 ### Internal
 

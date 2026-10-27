@@ -285,11 +285,9 @@ describe('git clone fallbacks', () => {
       await cloneRepo('https://github.com/Giphy/giphy-codex-skills.git');
       throw new Error('Expected cloneRepo to throw');
     } catch (error) {
-      expect(error).toMatchObject({
-        code: 'SKILLS_G004',
-        message: expect.stringMatching(/SAML SSO/),
-        fix: expect.stringMatching(/git@github\.com:Giphy\/giphy-codex-skills\.git/),
-      });
+      expect(error).toMatchObject({ code: 'SKILLS_G004' });
+      expect((error as Error).message).toMatch(/SAML SSO/);
+      expect((error as Error).message).toMatch(/git@github\.com:Giphy\/giphy-codex-skills\.git/);
     }
   });
 

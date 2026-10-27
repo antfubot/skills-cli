@@ -65,8 +65,8 @@ describe('parseSkillsField', () => {
         '.'
       ).errors.map((e) => e.message)
     ).toEqual([
-      '.: "owner/repo#v1" already has a ref',
-      '.: "https://github.com/o/r/tree/main/x" already has a ref',
+      '.: "owner/repo#v1" already has a ref; remove "ref"',
+      '.: "https://github.com/o/r/tree/main/x" already has a ref; remove "ref"',
     ]);
   });
 

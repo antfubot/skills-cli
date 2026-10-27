@@ -185,7 +185,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
       outputBytes += chunk.length;
       if (outputBytes > NTN_MAX_BUFFER_BYTES) {
         child.kill('SIGTERM');
-        fail(diagnostics.SKILLS_N002({ reason: 'output exceeded 10 MiB' }));
+        fail(diagnostics.SKILLS_N002({ reason: 'ntn api output exceeded 10 MiB' }));
         return;
       }
       chunks.push(chunk);
@@ -193,7 +193,11 @@ export async function runNtnApi(args: string[]): Promise<string> {
 
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
-      fail(diagnostics.SKILLS_N002({ reason: `timed out after ${NTN_TIMEOUT_MS / 1000} seconds` }));
+      fail(
+        diagnostics.SKILLS_N002({
+          reason: `ntn api timed out after ${NTN_TIMEOUT_MS / 1000} seconds`,
+        })
+      );
     }, NTN_TIMEOUT_MS);
 
     child.stdout.on('data', (chunk: Buffer) => append(stdoutChunks, chunk));
@@ -205,7 +209,7 @@ export async function runNtnApi(args: string[]): Promise<string> {
       }
       fail(
         diagnostics.SKILLS_N002({
-          reason: `unable to start ntn: ${stripTerminalEscapes(error.message)}`,
+          reason: `Unable to start ntn: ${stripTerminalEscapes(error.message)}`,
           cause: error,
         })
       );
@@ -217,7 +221,11 @@ export async function runNtnApi(args: string[]): Promise<string> {
         finish(() => resolve(stdout));
         return;
       }
-      fail(diagnostics.SKILLS_N002({ reason: stderr || `exit code ${code ?? 'unknown'}` }));
+      fail(
+        diagnostics.SKILLS_N002({
+          reason: `ntn api failed${stderr ? `: ${stderr}` : ` with exit code ${code ?? 'unknown'}`}`,
+        })
+      );
     });
   });
 }
@@ -495,7 +503,7 @@ export async function prepareNotionPackSource(
           fullDepth: true,
         });
         if (skills.length === 0) {
-          throw diagnostics.SKILLS_S004();
+          throw diagnostics.SKILLS_N008();
         }
 
         const directoryName = `pack-${index + 1}-${sanitizeName(pack.name).slice(0, 100)}`;

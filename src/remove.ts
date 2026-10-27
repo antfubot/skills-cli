@@ -195,7 +195,7 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
         formatError(
           diagnostics.SKILLS_S003({
             requested: skillNames,
-            available: installedSkills,
+            available: [],
           })
         )
       );

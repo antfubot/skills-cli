@@ -80,7 +80,7 @@ async function readProjectLockOrWarn(cwd: string): Promise<Record<string, ListLo
     return (await readLocalLock(cwd)).skills;
   } catch (error) {
     if (!isDiagnostic(error, 'SKILLS_I005')) throw error;
-    console.error(formatError(error));
+    console.error(`${YELLOW}Warning: ${formatError(error)}${RESET}`);
     return {};
   }
 }

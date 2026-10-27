@@ -79,8 +79,14 @@ describe('add command', () => {
       PATH: join(testDir, 'missing-bin'),
     });
 
-    expect(result.stdout).toContain('[SKILLS_N001] Notion CLI (ntn) is required');
-    expect(result.stdout).toContain('https://developers.notion.com/cli/get-started/overview');
+    expect(result.stdout).toContain('Notion CLI (ntn) is required');
+    const docsLine = result.stdout
+      .split('\n')
+      .find((line) => line.includes('https://developers.notion.com/cli/get-started/overview'));
+    // clack draws an ASCII gutter on Windows when CI is unset, which runCli ensures
+    expect(docsLine?.replace(/^\s*[│|]?\s*/, '')).toBe(
+      'https://developers.notion.com/cli/get-started/overview'
+    );
     expect(result.stdout).toContain('ntn login');
     expect(result.stdout).not.toContain('Cloning repository');
     expect(result.exitCode).toBe(1);

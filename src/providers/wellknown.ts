@@ -678,14 +678,14 @@ export class WellKnownProvider implements HostProvider {
     runningTotal: { bytes: number }
   ) {
     const normalizedPath = this.normalizeArchivePath(path);
-    if (!normalizedPath) throw diagnostics.SKILLS_A003({ path });
+    if (!normalizedPath) throw diagnostics.SKILLS_A011({ path });
 
     runningTotal.bytes += content.byteLength;
     if (runningTotal.bytes > MAX_ARCHIVE_UNPACKED_BYTES) {
-      throw diagnostics.SKILLS_A007({ maxBytes: MAX_ARCHIVE_UNPACKED_BYTES });
+      throw diagnostics.SKILLS_A012();
     }
     if (files.size >= MAX_ARCHIVE_FILES) {
-      throw diagnostics.SKILLS_A006({ count: files.size + 1, max: MAX_ARCHIVE_FILES });
+      throw diagnostics.SKILLS_A013();
     }
 
     files.set(normalizedPath, content);
