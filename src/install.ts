@@ -1,3 +1,5 @@
+import { existsSync } from 'fs';
+import { join } from 'path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { readLocalLock } from './local-lock.ts';
@@ -7,9 +9,11 @@ import { getUniversalAgents } from './agents.ts';
 import { buildLocalUpdateSource } from './update-source.ts';
 import { parseSource } from './source-parser.ts';
 import { isCI } from './ci.ts';
+import { getCanonicalPath } from './installer.ts';
 
 /**
- * Install all skills from the local skills-lock.json.
+ * Install the skills from the local skills-lock.json that are not already in
+ * .agents/skills/.
  * Groups skills by source and installs each group; a failing source does not
  * stop the others.
  *
@@ -45,11 +49,17 @@ export async function runInstallFromLock(args: string[]): Promise<void> {
 
   // Separate node_modules skills from remote skills
   const nodeModuleSkills: string[] = [];
+  const alreadyInstalled: string[] = [];
   const bySource = new Map<string, string[]>();
 
   for (const [skillName, entry] of skillEntries) {
     if (entry.sourceType === 'node_modules') {
       nodeModuleSkills.push(skillName);
+      continue;
+    }
+
+    if (existsSync(join(getCanonicalPath(skillName, { cwd }), 'SKILL.md'))) {
+      alreadyInstalled.push(skillName);
       continue;
     }
 
@@ -63,7 +73,13 @@ export async function runInstallFromLock(args: string[]): Promise<void> {
     bySource.set(installSource, [...(bySource.get(installSource) ?? []), skillName]);
   }
 
-  const remoteCount = skillEntries.length - nodeModuleSkills.length;
+  if (alreadyInstalled.length > 0) {
+    p.log.info(
+      `${pc.cyan(String(alreadyInstalled.length))} skill${alreadyInstalled.length !== 1 ? 's' : ''} already installed`
+    );
+  }
+
+  const remoteCount = skillEntries.length - nodeModuleSkills.length - alreadyInstalled.length;
   if (remoteCount > 0) {
     p.log.info(
       `Restoring ${pc.cyan(String(remoteCount))} skill${remoteCount !== 1 ? 's' : ''} from skills-lock.json into ${pc.dim('.agents/skills/')}`

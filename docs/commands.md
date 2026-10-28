@@ -349,7 +349,7 @@ npx skills experimental_install
 ```
 
 Restore supported sources recorded in `skills-lock.json` into `.agents/skills/`.
-Entries from npm packages are synced from the dependencies already on disk, so
+Skills already in `.agents/skills/` are left as they are. Entries from npm packages are synced from the dependencies already on disk, so
 install your npm dependencies before restoring. This command does not install
 npm packages or create agent-specific links for restored skills.
 
