@@ -554,16 +554,8 @@ description: Test
     expect(result.exitCode).toBe(1);
   });
 
-  it('should support add command aliases (a, i, install)', () => {
-    // Test that aliases work (just check they show missing source error)
-    const resultA = runCli(['a'], testDir);
-    const resultI = runCli(['i'], testDir);
-    const resultInstall = runCli(['install'], testDir);
-
-    // All should show the same "missing source" error
-    expect(resultA.stdout).toContain('Missing required argument: source');
-    expect(resultI.stdout).toContain('Missing required argument: source');
-    expect(resultInstall.stdout).toContain('Missing required argument: source');
+  it('should support the add command alias a', () => {
+    expect(runCli(['a'], testDir).stdout).toContain('Missing required argument: source');
   });
 
   it('should restore from lock file with experimental_install', () => {

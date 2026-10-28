@@ -339,8 +339,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const command = args[0];
   const restArgs = args.slice(1);
+  // Without a source, `install` restores skills-lock.json; with one, it is an alias of `add`.
+  const command =
+    (args[0] === 'i' || args[0] === 'install') && parseAddOptions(restArgs).source.length === 0
+      ? 'experimental_install'
+      : args[0];
 
   // Subcommand --help / -h must short-circuit before dispatch so that running
   // e.g. `skills update --help` prints help instead of executing the update

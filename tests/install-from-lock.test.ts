@@ -68,6 +68,26 @@ describe('experimental_install', () => {
     expect(lock.skills.alpha.computedHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it.each(['install', 'i'])('restores the lock with %s and no source', (command) => {
+    writeSkill(join(testDir, 'src-a', 'alpha'), 'alpha');
+    writeLock({ alpha: './src-a' });
+
+    expect(runCli([command], testDir).exitCode).toBe(0);
+    expect(installed('alpha')).toBe(true);
+  });
+
+  it('adds a source passed to install', () => {
+    writeSkill(join(testDir, 'src-a', 'alpha'), 'alpha');
+
+    const result = runCli(['install', './src-a', '-a', 'universal', '-y'], testDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(installed('alpha')).toBe(true);
+    expect(
+      JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8')).skills
+    ).toHaveProperty('alpha');
+  });
+
   it('keeps restoring after a source fails', () => {
     writeSkill(join(testDir, 'src-b', 'beta'), 'beta');
     writeLock({ alpha: './missing', beta: './src-b' });
