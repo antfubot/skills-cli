@@ -2261,6 +2261,11 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
 
       installMode = modeChoice as InstallMode;
     }
+    // Recorded only when chosen: otherwise `update` derives the same mode from its targets.
+    const lockedInstallMode =
+      installMode === 'copy' && (options.copy || defaultInstallMode(installTargets) === 'symlink')
+        ? { installMode: 'copy' as const }
+        : {};
 
     const cwd = process.cwd();
 
@@ -2509,6 +2514,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
               skillPath: skillPathValue,
               skillFolderHash,
               pluginName: skill.pluginName,
+              ...lockedInstallMode,
             });
           } catch {
             // Don't fail installation if lock file update fails
@@ -2540,6 +2546,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
               {
                 ...projectLockEntry(parsed, skillPathValue, computedHash),
                 ...(recordSubagents && { subagents: eveSubagents }),
+                ...lockedInstallMode,
               },
               cwd
             );
