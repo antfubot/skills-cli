@@ -349,7 +349,8 @@ npx skills experimental_install
 ```
 
 Restore supported sources recorded in `skills-lock.json` into `.agents/skills/`.
-Skills already in `.agents/skills/` are left as they are. Entries from npm packages are synced from the dependencies already on disk, so
+Skills already in `.agents/skills/` are left as they are; pass `--force` to reinstall
+them. Entries from npm packages are synced from the dependencies already on disk, so
 install your npm dependencies before restoring. This command does not install
 npm packages or create agent-specific links for restored skills.
 
@@ -357,6 +358,7 @@ npm packages or create agent-specific links for restored skills.
 | ---------------------- | ----------------------------------------------------------- |
 | `--frozen-lockfile`    | Fail instead of changing `skills-lock.json` (default in CI) |
 | `--no-frozen-lockfile` | Allow `skills-lock.json` to change in CI                    |
+| `--force`              | Reinstall skills that are already in `.agents/skills/`      |
 
 With `--frozen-lockfile`, every restored skill must match the content hash recorded
 in `skills-lock.json`. A source whose skills differ is skipped entirely, the lock is

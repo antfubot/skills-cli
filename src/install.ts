@@ -13,7 +13,7 @@ import { getCanonicalPath } from './installer.ts';
 
 /**
  * Install the skills from the local skills-lock.json that are not already in
- * .agents/skills/.
+ * .agents/skills/ (all of them with --force).
  * Groups skills by source and installs each group; a failing source does not
  * stop the others.
  *
@@ -26,6 +26,7 @@ export async function runInstallFromLock(args: string[]): Promise<void> {
   const cwd = process.cwd();
   const { options: syncOptions } = parseSyncOptions(args);
   const frozen = syncOptions.frozenLockfile ?? isCI();
+  const force = args.includes('--force');
   const lock = await readLocalLock(cwd);
   const skillEntries = Object.entries(lock.skills);
 
@@ -58,7 +59,7 @@ export async function runInstallFromLock(args: string[]): Promise<void> {
       continue;
     }
 
-    if (existsSync(join(getCanonicalPath(skillName, { cwd }), 'SKILL.md'))) {
+    if (!force && existsSync(join(getCanonicalPath(skillName, { cwd }), 'SKILL.md'))) {
       alreadyInstalled.push(skillName);
       continue;
     }
@@ -75,7 +76,7 @@ export async function runInstallFromLock(args: string[]): Promise<void> {
 
   if (alreadyInstalled.length > 0) {
     p.log.info(
-      `${pc.cyan(String(alreadyInstalled.length))} skill${alreadyInstalled.length !== 1 ? 's' : ''} already installed`
+      `${pc.cyan(String(alreadyInstalled.length))} skill${alreadyInstalled.length !== 1 ? 's' : ''} already installed ${pc.dim('(use --force to reinstall)')}`
     );
   }
 

@@ -175,6 +175,7 @@ ${BOLD}Project:${RESET}
 ${BOLD}Experimental Install Options:${RESET}
   --frozen-lockfile      Fail instead of changing skills-lock.json (default in CI)
   --no-frozen-lockfile   Allow skills-lock.json to change in CI
+  --force                Reinstall skills that are already installed
 
 ${BOLD}Add Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level

@@ -104,6 +104,13 @@ describe('experimental_install', () => {
       expect(runCli(['experimental_install'], testDir).exitCode).toBe(0);
       expect(installedContent()).toContain('name: alpha');
     });
+
+    it('are reinstalled with --force', () => {
+      const result = runCli(['experimental_install', '--force'], testDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(installedContent()).toContain('name: alpha');
+    });
   });
 
   describe('--frozen-lockfile', () => {
