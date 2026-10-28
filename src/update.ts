@@ -125,6 +125,8 @@ export interface UpdateCheckOptions {
   yes?: boolean;
   /** Optional skill name(s) to filter on (positional args) */
   skills?: string[];
+  /** Check mode: report each skill that has an update instead of installing it. */
+  reportOutdated?: (name: string) => void;
 }
 
 /**
@@ -522,7 +524,11 @@ export async function processWellKnownUpdates(
     printNewSkills(baseUrl, result.newSkills, isGlobal);
 
     if (result.changedSkills.length > 0) {
-      pending.push({ baseUrl, items, changedSkills: result.changedSkills });
+      if (options.reportOutdated) {
+        for (const name of result.changedSkills) options.reportOutdated(name);
+      } else {
+        pending.push({ baseUrl, items, changedSkills: result.changedSkills });
+      }
     }
   }
 
@@ -786,6 +792,12 @@ export async function updateGlobalSkills(
     return { successCount, failCount, checkedCount };
   }
 
+  if (options.reportOutdated) {
+    for (const { name } of updates) options.reportOutdated(name);
+    printSkippedSkills(skipped);
+    return { successCount, failCount, checkedCount };
+  }
+
   console.log(`${TEXT}Found ${updates.length} global update(s)${RESET}`);
   console.log();
 
@@ -1002,6 +1014,10 @@ export async function updateProjectSkills(
           upToDateCount++;
           continue;
         }
+        if (options.reportOutdated) {
+          options.reportOutdated(skill.name);
+          continue;
+        }
 
         console.log(`${TEXT}Updating ${sanitizeMetadata(skill.name)}…${RESET}`);
         const results = await installToTargets(
@@ -1057,11 +1073,20 @@ export function printLegacyProjectSkills(
   }
 }
 
-export async function runUpdate(args: string[] = []): Promise<void> {
+export async function runUpdate(
+  args: string[] = [],
+  mode: 'update' | 'check' = 'update'
+): Promise<void> {
   const options = parseUpdateOptions(args);
+  if (mode === 'check') {
+    // Never prompt: pick the scope automatically and only report upstream deletions.
+    options.yes = true;
+    options.reportOutdated = (name) =>
+      console.log(`${TEXT}↑ ${sanitizeMetadata(name)} has an update${RESET}`);
+  }
   const scope = await resolveUpdateScope(options);
 
-  if (options.skills) {
+  if (options.skills && mode === 'update') {
     console.log(`${TEXT}Updating ${options.skills.join(', ')}…${RESET}`);
   } else {
     console.log(`${TEXT}Checking for skill updates…${RESET}`);
