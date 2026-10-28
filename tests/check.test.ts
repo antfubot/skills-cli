@@ -52,5 +52,10 @@ describe('check', () => {
 
     expect(installed()).toContain('v1');
     expect(result.stdout).toContain('alpha has an update');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('exits 0 when every skill is up to date', () => {
+    expect(runCli(['check'], project).exitCode).toBe(0);
   });
 });

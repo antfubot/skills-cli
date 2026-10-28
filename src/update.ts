@@ -1078,11 +1078,14 @@ export async function runUpdate(
   mode: 'update' | 'check' = 'update'
 ): Promise<void> {
   const options = parseUpdateOptions(args);
+  let outdatedCount = 0;
   if (mode === 'check') {
     // Never prompt: pick the scope automatically and only report upstream deletions.
     options.yes = true;
-    options.reportOutdated = (name) =>
+    options.reportOutdated = (name) => {
+      outdatedCount++;
       console.log(`${TEXT}↑ ${sanitizeMetadata(name)} has an update${RESET}`);
+    };
   }
   const scope = await resolveUpdateScope(options);
 
@@ -1130,6 +1133,12 @@ export async function runUpdate(
   }
   if (totalFail > 0) {
     console.log(`${DIM}Failed to update ${totalFail} skill(s)${RESET}`);
+    process.exitCode = 1;
+  }
+  if (outdatedCount > 0) {
+    console.log(
+      `${TEXT}${outdatedCount} skill(s) can be updated; run ${BOLD}npx skills update${RESET}${TEXT} to install${RESET}`
+    );
     process.exitCode = 1;
   }
 
