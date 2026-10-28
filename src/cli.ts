@@ -88,7 +88,7 @@ function showBanner(): void {
   );
   console.log();
   console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills experimental_install${RESET} ${DIM}Restore from skills-lock.json${RESET}`
+    `  ${DIM}$${RESET} ${TEXT}npx skills install${RESET}              ${DIM}Restore from skills-lock.json${RESET}`
   );
   console.log(
     `  ${DIM}$${RESET} ${TEXT}npx skills init ${DIM}[name]${RESET}          ${DIM}Create a new skill${RESET}`
@@ -125,7 +125,7 @@ function showHelp(): void {
     ['skills update'],
     ['skills update my-skill', 'update a single skill'],
     ['skills update -g', 'update global skills only'],
-    ['skills experimental_install', 'restore from skills-lock.json'],
+    ['skills install', 'restore from skills-lock.json'],
     ['skills init my-skill'],
     ['skills experimental_sync', 'sync from node_modules (experimental)'],
     ['skills experimental_sync -y', 'sync without prompts'],
@@ -168,11 +168,11 @@ ${BOLD}Update Options:${RESET}
   -y, --yes              Skip scope prompt (auto-detect: project if in a project, else global)
 
 ${BOLD}Project:${RESET}
-  experimental_install Restore skills from skills-lock.json
+  install, i           Restore skills from skills-lock.json (alias: experimental_install)
   init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
   experimental_sync    Sync skills from node_modules into agent directories (alias: sync)
 
-${BOLD}Experimental Install Options:${RESET}
+${BOLD}Install Options:${RESET}
   --frozen-lockfile      Fail instead of changing skills-lock.json (default in CI)
   --no-frozen-lockfile   Allow skills-lock.json to change in CI
 

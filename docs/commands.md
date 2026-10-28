@@ -345,8 +345,11 @@ pass `--no-frozen-lockfile` to update the lock from CI.
 ### Restore skills from the project lock file
 
 ```bash
-npx skills experimental_install
+npx skills install
 ```
+
+`skills i` and `skills experimental_install` do the same; `skills install <source>`
+adds a source like `skills add`.
 
 Restore supported sources recorded in `skills-lock.json` into `.agents/skills/`.
 Entries from npm packages are synced from the dependencies already on disk, so
